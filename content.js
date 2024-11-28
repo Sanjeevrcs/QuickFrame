@@ -1,5 +1,3 @@
-let hoverTimer; // Timer to track the hover duration
-
 document.addEventListener('mouseover', (event) => {
     const target = event.target.closest('a'); // Detect the hovered link
     if (target) {
@@ -18,6 +16,7 @@ document.addEventListener('mouseover', (event) => {
             container.style.padding = '0';
             container.style.display = 'flex';
             container.style.flexDirection = 'column';
+            container.style.cursor = 'grab';
 
             // Add close button
             const closeButton = document.createElement('button');
@@ -29,10 +28,9 @@ document.addEventListener('mouseover', (event) => {
             closeButton.style.fontSize = '18px';
             closeButton.style.cursor = 'pointer';
             closeButton.style.margin = '5px';
-            closeButton.style.zIndex = '1001';
 
             closeButton.addEventListener('click', () => {
-                container.remove(); // Remove iframe on button click
+                container.remove(); // Remove the container on close button click
             });
 
             // Create the iframe
@@ -40,96 +38,108 @@ document.addEventListener('mouseover', (event) => {
             iframe.src = target.href;
             iframe.style.flex = '1'; // Allow iframe to occupy the remaining space
             iframe.style.border = 'none';
-            iframe.style.overflow = 'auto'; // Make iframe scrollable if content is large
-
-            // Add resize handle
-            const resizeHandle = document.createElement('div');
-            resizeHandle.style.width = '10px';
-            resizeHandle.style.height = '10px';
-            resizeHandle.style.background = '#ccc';
-            resizeHandle.style.position = 'absolute';
-            resizeHandle.style.bottom = '0';
-            resizeHandle.style.right = '0';
-            resizeHandle.style.cursor = 'se-resize';
-
-            // Drag functionality
-            let isDragging = false;
-            let offsetX, offsetY;
-
-            container.addEventListener('mousedown', (e) => {
-                if (e.target !== resizeHandle) {
-                    isDragging = true;
-                    offsetX = e.clientX - container.offsetLeft;
-                    offsetY = e.clientY - container.offsetTop;
-                    document.addEventListener('mousemove', onDrag);
-                    document.addEventListener('mouseup', stopDrag);
-                }
-            });
-
-            function onDrag(e) {
-                if (isDragging) {
-                    container.style.left = `${e.clientX - offsetX}px`;
-                    container.style.top = `${e.clientY - offsetY}px`;
-                }
-            }
-
-            function stopDrag() {
-                isDragging = false;
-                document.removeEventListener('mousemove', onDrag);
-                document.removeEventListener('mouseup', stopDrag);
-            }
-
-            // Resize functionality
-            let isResizing = false;
-
-            resizeHandle.addEventListener('mousedown', (e) => {
-                e.stopPropagation();
-                isResizing = true;
-                document.addEventListener('mousemove', onResize);
-                document.addEventListener('mouseup', stopResize);
-            });
-
-            function onResize(e) {
-                if (isResizing) {
-                    const newWidth = e.clientX - container.offsetLeft;
-                    const newHeight = e.clientY - container.offsetTop;
-                    container.style.width = `${Math.max(newWidth, 200)}px`; // Minimum width
-                    container.style.height = `${Math.max(newHeight, 200)}px`; // Minimum height
-                }
-            }
-
-            function stopResize() {
-                isResizing = false;
-                document.removeEventListener('mousemove', onResize);
-                document.removeEventListener('mouseup', stopResize);
-            }
 
             // Append elements
             container.appendChild(closeButton);
             container.appendChild(iframe);
+
+            // Position the container near the link
+            const rect = target.getBoundingClientRect();
+            container.style.top = `${rect.top + window.scrollY + rect.height / 2 - 300}px`;
+            container.style.left = `${rect.right + window.scrollX + 10}px`;
+
+            // Add to the document
+            document.body.appendChild(container);
+
+            // Drag-and-drop functionality
+            let isDragging = false;
+            let offsetX = 0, offsetY = 0;
+
+            container.addEventListener('mousedown', (e) => {
+                if (e.target !== container) return;
+                isDragging = true;
+                offsetX = e.clientX - container.offsetLeft;
+                offsetY = e.clientY - container.offsetTop;
+                container.style.cursor = 'grabbing';
+
+                // Disable pointer events for the iframe
+                iframe.style.pointerEvents = 'none';
+
+                // Listen for mousemove and mouseup globally
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+
+            const onMouseMove = (e) => {
+                if (isDragging) {
+                    e.preventDefault(); // Prevent text selection or other unwanted behaviors
+                    container.style.left = `${e.clientX - offsetX}px`;
+                    container.style.top = `${e.clientY - offsetY}px`;
+                }
+            };
+
+            const onMouseUp = () => {
+                if (isDragging) {
+                    isDragging = false;
+                    container.style.cursor = 'grab';
+                    iframe.style.pointerEvents = 'auto'; // Re-enable iframe interactions
+
+                    // Remove global listeners to avoid memory leaks
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                }
+            };
+
+            // Resizing functionality
+            const resizeHandle = document.createElement('div');
+            resizeHandle.style.position = 'absolute';
+            resizeHandle.style.width = '15px';
+            resizeHandle.style.height = '15px';
+            resizeHandle.style.backgroundColor = '#ccc';
+            resizeHandle.style.borderRadius = '50%';
+            resizeHandle.style.cursor = 'nwse-resize';
+            resizeHandle.style.bottom = '5px';
+            resizeHandle.style.right = '5px';
+
             container.appendChild(resizeHandle);
 
-            // Get the link's position and dimensions
-            const rect = target.getBoundingClientRect();
-            const viewportWidth = window.innerWidth;
+            let isResizing = false;
+            let startWidth = 0, startHeight = 0, startX = 0, startY = 0;
 
-            // Position beside the link, centered vertically
-            let top = rect.top + window.scrollY + rect.height / 2 - 300; // Center vertically
-            let left = rect.right + window.scrollX + 10; // Position to the right of the link, leaving a 10px gap
+            resizeHandle.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                startWidth = container.offsetWidth;
+                startHeight = container.offsetHeight;
+                startX = e.clientX;
+                startY = e.clientY;
 
-            // Adjust position if it goes outside the viewport
-            if (left + 800 > viewportWidth) {
-                left = rect.left + window.scrollX - 800 - 10; // Move to the left of the link if it overflows
-            }
-            if (top < window.scrollY) {
-                top = window.scrollY + 10; // Ensure a small margin if too close to the top
-            }
+                // Listen for mousemove and mouseup globally
+                document.addEventListener('mousemove', onResizeMove);
+                document.addEventListener('mouseup', onResizeUp);
 
-            // Apply the calculated position
-            container.style.top = `${top}px`;
-            container.style.left = `${left}px`;
+                // Prevent default actions
+                e.preventDefault();
+                e.stopPropagation();
+            });
 
-            document.body.appendChild(container);
+            const onResizeMove = (e) => {
+                if (isResizing) {
+                    const newWidth = startWidth + (e.clientX - startX);
+                    const newHeight = startHeight + (e.clientY - startY);
+                    container.style.width = `${newWidth}px`;
+                    container.style.height = `${newHeight}px`;
+                }
+            };
+
+            const onResizeUp = () => {
+                if (isResizing) {
+                    isResizing = false;
+
+                    // Remove global listeners to avoid memory leaks
+                    document.removeEventListener('mousemove', onResizeMove);
+                    document.removeEventListener('mouseup', onResizeUp);
+                }
+            };
         }, 2000); // 2-second delay
     }
 });
